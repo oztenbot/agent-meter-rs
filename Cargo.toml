@@ -2,5 +2,6 @@
 members = [
     "crates/agent-meter",
     "crates/agent-meter-axum",
+    "crates/agent-meter-client",
 ]
 resolver = "2"

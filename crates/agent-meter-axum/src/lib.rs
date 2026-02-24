@@ -21,12 +21,12 @@
 //!     .layer(AgentMeterLayer::new(meter));
 //! ```
 
-use agent_meter::{AgentMeter, IncomingRequest, RouteOptions};
+use agent_meter::{sign_payload, AgentMeter, IncomingRequest, RouteOptions};
 use axum::body::Body;
 use axum::extract::Request;
 use axum::response::Response;
 use futures_util::future::BoxFuture;
-use http::HeaderMap;
+use http::{HeaderMap, HeaderValue};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Instant;
@@ -37,6 +37,7 @@ use tower::{Layer, Service};
 pub struct AgentMeterLayer {
     meter: AgentMeter,
     options: Option<Arc<RouteOptions>>,
+    receipt_secret: Option<Arc<String>>,
 }
 
 impl AgentMeterLayer {
@@ -44,12 +45,24 @@ impl AgentMeterLayer {
         Self {
             meter,
             options: None,
+            receipt_secret: None,
         }
     }
 
     /// Attach per-route options (operation name, unit count, pricing, etc.)
     pub fn with_options(mut self, options: RouteOptions) -> Self {
         self.options = Some(Arc::new(options));
+        self
+    }
+
+    /// Enable signed usage receipts. Each metered response gets an
+    /// `X-Usage-Receipt: HMAC(secret, requestSignature)` header.
+    ///
+    /// Agents can verify the receipt to confirm Service X received and
+    /// recorded the request. Expose a `/v1/receipts/verify` endpoint
+    /// so agents can verify without knowing your secret.
+    pub fn with_receipt_secret(mut self, secret: impl Into<String>) -> Self {
+        self.receipt_secret = Some(Arc::new(secret.into()));
         self
     }
 }
@@ -62,6 +75,7 @@ impl<S> Layer<S> for AgentMeterLayer {
             inner,
             meter: self.meter.clone(),
             options: self.options.clone(),
+            receipt_secret: self.receipt_secret.clone(),
         }
     }
 }
@@ -72,6 +86,7 @@ pub struct AgentMeterService<S> {
     inner: S,
     meter: AgentMeter,
     options: Option<Arc<RouteOptions>>,
+    receipt_secret: Option<Arc<String>>,
 }
 
 impl<S> Service<Request<Body>> for AgentMeterService<S>
@@ -92,6 +107,7 @@ where
         let start = Instant::now();
         let meter = self.meter.clone();
         let options = self.options.clone();
+        let receipt_secret = self.receipt_secret.clone();
 
         // Extract request metadata before consuming the request
         let method = req.method().to_string();
@@ -104,7 +120,7 @@ where
 
         let mut inner = self.inner.clone();
         Box::pin(async move {
-            let response = inner.call(req).await?;
+            let mut response = inner.call(req).await?;
             let status_code = response.status().as_u16();
             let duration_ms = start.elapsed().as_millis() as u64;
 
@@ -113,7 +129,7 @@ where
                 path: Some(path),
                 agent_id,
                 agent_name,
-                request_signature,
+                request_signature: request_signature.clone(),
                 body: None, // body is consumed; sign body before middleware if needed
                 status_code: Some(status_code),
                 duration_ms: Some(duration_ms),
@@ -126,6 +142,14 @@ where
             };
 
             meter.record(incoming, options.as_ref().map(|o| (**o).clone()));
+
+            // Inject signed usage receipt so agents can verify the request was metered
+            if let (Some(secret), Some(sig)) = (&receipt_secret, &request_signature) {
+                let receipt = sign_payload(sig, secret);
+                if let Ok(val) = HeaderValue::from_str(&receipt) {
+                    response.headers_mut().insert("x-usage-receipt", val);
+                }
+            }
 
             Ok(response)
         })

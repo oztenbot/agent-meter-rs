@@ -1,0 +1,25 @@
+[package]
+name = "agent-meter-client"
+version = "0.1.0"
+edition = "2021"
+description = "Agent-side SDK for agent-meter — request signing, logging, and reconciliation."
+license = "MIT"
+repository = "https://github.com/oztenbot/agent-meter-rs"
+keywords = ["metering", "billing", "agent", "signing", "reconciliation"]
+categories = ["web-programming"]
+
+[dependencies]
+agent-meter = { path = "../agent-meter", version = "0.1" }
+reqwest = { version = "0.12", features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+tokio = { version = "1", features = ["sync"] }
+thiserror = "1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
+axum = { version = "0.7" }
+agent-meter-axum = { path = "../agent-meter-axum" }
+serde_json = "1"

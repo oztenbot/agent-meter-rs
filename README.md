@@ -10,24 +10,52 @@ Track every request, attribute it to an agent, and emit structured usage records
 
 Rust port of [agent-meter](https://github.com/oztenbot/agent-meter) (TypeScript/npm). HMAC signing matches the TypeScript implementation exactly — records signed by one SDK are verifiable by the other.
 
+## How It Works
+
+```mermaid
+sequenceDiagram
+    actor A as Agent Y
+    participant S as Service X + agent-meter
+    participant DB as metering store
+
+    S->>A: agentId + HMAC signing secret
+
+    loop Every request
+        A->>A: sign body, log request
+        A->>S: POST /api/generate<br/>X-Agent-Id / X-Agent-Signature
+        S->>S: verify sig, meter, store UsageRecord
+        S->>A: 200 OK + X-Usage-Receipt
+        A->>A: store receipt
+    end
+
+    A->>DB: GET /v1/usage/me
+    DB->>A: UsageRecords + Merkle attestation
+    A->>A: reconcile(agent_log, service_records)
+    Note over A: matched: 47 · agent_only: 2 · service_only: 0
+```
+
+Agent Y signs every request. Service X meters and returns a signed receipt. Both parties keep a log. Reconciliation diffs them by `requestSignature` — the unforgeable correlation key.
+
+**[Full flow documentation →](docs/e2e-flow.md)**
+
 ## Crates
 
 | Crate | Description |
 |-------|-------------|
 | [`agent-meter`](crates/agent-meter) | Core library: types, transports, signing, attestation |
-| [`agent-meter-axum`](crates/agent-meter-axum) | Tower/axum middleware layer |
+| [`agent-meter-axum`](crates/agent-meter-axum) | Tower/axum middleware layer (Service X side) |
+| [`agent-meter-client`](crates/agent-meter-client) | Agent-side SDK: signing, request logging, reconciliation (Agent Y side) |
 
 ## Install
 
 ```toml
-[dependencies]
+# Service X (the API being metered)
 agent-meter = "0.1"
+agent-meter-axum = "0.1"          # axum middleware
+agent-meter = { version = "0.1", features = ["sqlite"] }  # optional SQLite
 
-# axum middleware
-agent-meter-axum = "0.1"
-
-# SQLite transport (optional)
-agent-meter = { version = "0.1", features = ["sqlite"] }
+# Agent Y (the agent making requests)
+agent-meter-client = "0.1"
 ```
 
 ## Quick Start
@@ -52,7 +80,7 @@ async fn main() {
 
     let app: Router = Router::new()
         .route("/api/widgets", get(|| async { Json(["a", "b", "c"]) }))
-        .layer(AgentMeterLayer::new(meter));
+        .layer(AgentMeterLayer::new(meter).with_receipt_secret("svc-secret"));
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     axum::serve(listener, app).await.unwrap();
@@ -64,6 +92,35 @@ Agents identify themselves with the `X-Agent-Id` header. Every request from an i
 ```bash
 curl -H "X-Agent-Id: bot-123" -H "X-Agent-Name: WidgetBot" \
   http://localhost:3000/api/widgets
+```
+
+### Agent Y (making signed requests)
+
+```rust
+use agent_meter_client::{AgentClient, ClientConfig};
+
+#[tokio::main]
+async fn main() {
+    let client = AgentClient::new(ClientConfig {
+        agent_id: "agent-y".to_string(),
+        agent_name: Some("MyAgent".to_string()),
+        signing_secret: Some("shared-secret".to_string()),
+        service_url: "http://localhost:3000".to_string(),
+    });
+
+    // Sign and send a request — logged automatically
+    let body = serde_json::json!({"prompt": "hello"}).to_string();
+    let resp = client.call("POST", "/api/generate", Some(&body)).await.unwrap();
+    println!("status: {}, receipt: {:?}", resp.status_code, resp.receipt);
+
+    // Reconcile local log against service records
+    let report = client.reconcile().await.unwrap();
+    println!("matched: {}  agent_only: {}  service_only: {}",
+        report.summary.matched,
+        report.summary.agent_only_count,
+        report.summary.service_only_count,
+    );
+}
 ```
 
 ### Standalone (without a framework)
@@ -418,6 +475,9 @@ Attestation Merkle trees are also compatible — the same hashing scheme and lea
 Run the examples:
 
 ```bash
+# Full end-to-end demo: signing, metering, receipts, and reconciliation
+cargo run --example e2e --manifest-path crates/agent-meter-client/Cargo.toml
+
 # Basic usage with MemoryTransport
 cargo run --example basic --manifest-path crates/agent-meter/Cargo.toml
 
