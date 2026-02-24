@@ -3,7 +3,6 @@ use crate::types::{
     AgentStats, OperationStats, QueryFilter, UsageRecord, UsageSummary,
 };
 use rusqlite::{params, Connection};
-use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};

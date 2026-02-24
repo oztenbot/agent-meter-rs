@@ -25,5 +25,9 @@ reqwest = { version = "0.12", features = ["json"] }
 thiserror = "1"
 rusqlite = { version = "0.31", features = ["bundled"], optional = true }
 
+[[example]]
+name = "sqlite_transport"
+required-features = ["sqlite"]
+
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util"] }
