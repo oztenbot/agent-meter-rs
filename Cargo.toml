@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "crates/agent-meter",
+    "crates/agent-meter-axum",
+]
+resolver = "2"

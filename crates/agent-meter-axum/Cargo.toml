@@ -1,0 +1,20 @@
+[package]
+name = "agent-meter-axum"
+version = "0.1.0"
+edition = "2021"
+description = "axum middleware for agent-meter — usage metering for the agent economy."
+license = "MIT"
+repository = "https://github.com/oztenbot/agent-meter-rs"
+keywords = ["metering", "billing", "agent", "axum", "middleware"]
+categories = ["web-programming"]
+
+[dependencies]
+agent-meter = { path = "../agent-meter", version = "0.1" }
+axum = { version = "0.7", features = ["macros"] }
+tower = "0.4"
+tower-layer = "0.3"
+tower-service = "0.3"
+http = "1"
+tokio = { version = "1", features = ["sync"] }
+futures-util = "0.3"
+pin-project-lite = "0.2"
