@@ -41,8 +41,9 @@ jobs:
       - name: Dry run publish agent-meter
         run: cargo publish --dry-run --manifest-path crates/agent-meter/Cargo.toml
 
-      - name: Dry run publish agent-meter-axum
-        run: cargo publish --dry-run --manifest-path crates/agent-meter-axum/Cargo.toml
+      # agent-meter-axum dry-run is skipped here: cargo resolves its `agent-meter`
+      # dep from crates.io, which doesn't exist until after first publish. The actual
+      # publish job handles ordering (agent-meter first, sleep, then agent-meter-axum).
 
   publish:
     name: Publish to crates.io
