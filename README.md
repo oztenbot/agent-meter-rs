@@ -242,6 +242,8 @@ let stats = transport.summary(None).unwrap();
 
 Batches records and POSTs them to a backend. Retries with exponential backoff. Handles `429 Too Many Requests` with `Retry-After`.
 
+Use the hosted backend at `api.agentmeter.io` or run your own with [`agent-meter-server`](https://github.com/oztenbot/agent-meter-server).
+
 ```rust
 use agent_meter::{HttpTransport, transport::http::HttpTransportOptions};
 use std::{collections::HashMap, sync::Arc};
@@ -250,7 +252,7 @@ let mut headers = HashMap::new();
 headers.insert("Authorization".to_string(), "Bearer sk-...".to_string());
 
 let transport = HttpTransport::new(HttpTransportOptions {
-    url: "https://billing.example.com/v1/usage/batch".to_string(),
+    url: "https://api.agentmeter.io/v1/usage/batch".to_string(),
     headers,
     batch_size: 10,           // flush every N records
     flush_interval_ms: Some(5000), // or every 5 seconds
